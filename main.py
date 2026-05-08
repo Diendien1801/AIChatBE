@@ -1,20 +1,57 @@
 from fastapi import FastAPI, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from agent.openapi_tool import get_openapi_agent
+from agent.mongo_chat_history import (
+    build_mongo_history,
+    messages_to_chat_payload,
+    messages_to_history_text,
+)
 from typing import Optional, List
 import traceback
+from dotenv import load_dotenv
 
-app = FastAPI(title="AEO AI Assistant Service (No DB)")
+load_dotenv()
+
+app = FastAPI(title="AEO AI Assistant Service")
 
 # 1. Định nghĩa cấu trúc Lịch sử
 class ChatMessage(BaseModel):
     role: str  # 'user' hoặc 'bot'
     content: str
 
-# 2. Cập nhật Request để nhận mảng history
+# 2. Request: history từ client, hoặc session_id để dùng MongoDB (AICHAT1.chat_histories)
 class ChatRequest(BaseModel):
     message: str
-    history: Optional[List[ChatMessage]] = [] # Mặc định là mảng rỗng nếu chưa có
+    session_id: Optional[str] = None
+    history: List[ChatMessage] = Field(default_factory=list)
+
+@app.get("/assistant/session/{session_id}")
+async def get_session(session_id: str):
+    """Return chat messages stored in MongoDB for this session."""
+    key = (session_id or "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="session_id is empty")
+    try:
+        mongo_history = build_mongo_history(key)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    messages = messages_to_chat_payload(mongo_history.messages)
+    return {"status": "success", "session_id": key, "messages": messages}
+
+
+@app.delete("/assistant/session/{session_id}")
+async def delete_session(session_id: str):
+    """Remove all MongoDB documents for this session (LangChain clear)."""
+    key = (session_id or "").strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="session_id is empty")
+    try:
+        mongo_history = build_mongo_history(key)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    mongo_history.clear()
+    return {"status": "success", "session_id": key, "deleted": True}
+
 
 @app.post("/assistant/chat")
 async def chat_with_agent(
@@ -27,12 +64,20 @@ async def chat_with_agent(
         if authorization and authorization.startswith("Bearer "):
             access_token = authorization.split(" ")[1]
 
-        # 3. Chuyển mảng history từ Client thành Text cho AI đọc
+        # 3. Lịch sử: MongoDB (SessionId / History) hoặc mảng history từ client
         history_text = ""
-        if req.history:
+        mongo_history = None
+        session_key = (req.session_id or "").strip()
+        if session_key:
+            try:
+                mongo_history = build_mongo_history(session_key)
+            except ValueError as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
+            history_text = messages_to_history_text(mongo_history.messages)
+        elif req.history:
             history_text = "LỊCH SỬ TRÒ CHUYỆN:\n"
             for msg in req.history:
-                role_name = "USER" if msg.role.lower() == 'user' else "BOT"
+                role_name = "USER" if msg.role.lower() == "user" else "BOT"
                 history_text += f"- {role_name}: {msg.content}\n"
             history_text += "\n"
 
@@ -59,6 +104,10 @@ async def chat_with_agent(
         response = agent.invoke({"input": prompt})
         bot_reply = response["output"]
 
+        if mongo_history is not None:
+            mongo_history.add_user_message(req.message)
+            mongo_history.add_ai_message(bot_reply)
+
         return {"status": "success", "reply": bot_reply}
 
     except Exception as e:
@@ -69,4 +118,4 @@ async def chat_with_agent(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
