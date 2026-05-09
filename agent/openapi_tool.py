@@ -26,7 +26,7 @@ def filter_swagger_smart(raw_spec, target_tags):
     filtered_spec = raw_spec.copy()
     filtered_paths = {}
     
-    always_allow_get_tags = ["projects", "brands", "users","topics","contents-profiles","Keyword","prompts"] 
+    always_allow_get_tags = ["projects", "brands", "user","project-members","subscriptions","contents","content-agents","customer-personas","content-insights","topics","contents-profiles","Keyword","prompts"] 
     
     for path, methods in raw_spec.get("paths", {}).items():
         new_methods = {}
@@ -118,8 +118,9 @@ def get_openapi_agent(access_token: str, user_message: str, history_text: str):
         requests_wrapper=requests_wrapper,
         llm=llm,
         allow_dangerous_requests=True,
+        allowed_operations=("GET", "POST", "PUT", "DELETE", "PATCH"),
         verbose=True,
-        agent_executor_kwargs={"handle_parsing_errors": True} 
+        agent_executor_kwargs={"handle_parsing_errors": True},
     )
     
     return agent

@@ -97,7 +97,11 @@ async def chat_with_agent(
             "   (Ví dụ mẫu: '- **Đối tượng độc giả** (Bắt buộc): Nhóm người sẽ đọc nội dung này - Ví dụ: Sinh viên, Người đi làm...').\n"
             "5. CÁCH HỎI NGƯỢC LẠI USER: BẮT BUỘC dùng cú pháp 'Final Answer: [Câu trả lời/Câu hỏi của bạn]' để thoát vòng lặp và giao tiếp. Không được để trống Action.\n"
             "6. LỖI FORMAT JSON: Khi gọi API, Action Input phải là JSON thô, CẤM bọc trong ```json.\n"
-            "7. NGÔN NGỮ: Luôn giao tiếp bằng Tiếng Việt thân thiện, rõ ràng."
+            "7. NGÔN NGỮ: Luôn giao tiếp bằng Tiếng Việt thân thiện, rõ ràng.\n"
+            "8. QUY TRÌNH TẠO PROJECT BẮT BUỘC (2 BƯỚC): Backend hiện tại KHÔNG nhận tham số khi khởi tạo Project. Do đó, khi người dùng yêu cầu tạo Project mới kèm theo các thông tin (tên, mô tả...), bạn BẮT BUỘC phải thực hiện chuỗi hành động sau:\n"
+            "   - Bước 1 (Tạo nháp): Gọi API POST để tạo Project. TUYỆT ĐỐI KHÔNG truyền các tham số (như name, description...) vào payload của API này để tránh lỗi. Chỉ gọi POST thuần túy.\n"
+            "   - Bước 2 (Cập nhật): Trích xuất `id` của Project vừa được tạo từ kết quả của Bước 1. Sau đó, LẬP TỨC tìm và gọi API PATCH (hoặc PUT) để cập nhật các thông tin người dùng đã yêu cầu (name, description...) vào đúng `id` đó.\n"
+            "   - CHÚ Ý: Tuyệt đối không trả về Final Answer cho người dùng nếu chưa thực hiện thành công Bước 2."
         )
         
         # 6. Gọi AI xử lý
